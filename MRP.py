@@ -9,6 +9,7 @@ class MRP:
         self.zapas_bezpieczenstwa = zapas_bezpieczenstwa  # Minimalny poziom zapasu (zapas bezpieczeństwa)
         self.wielkosc_partii = wielkosc_partii  # Wielkości partii produkcji
         self.harmonogram = pd.DataFrame(columns=['Dzień', 'Produkt', 'Zapotrzebowanie', 'Planowana produkcja'])
+        self.najdluzszy_dzien = 0  # Najdłuższy dzień dla ukończenia zamówienia
 
     def oblicz_zapotrzebowanie(self, produkt, dzien, ilosc_wymagana):
         """
@@ -23,7 +24,7 @@ class MRP:
         print(f"Zapotrzebowanie netto dla {produkt}: {zapotrzebowanie_netto}")
 
         if zapotrzebowanie_netto > 0:
-            #Planowanie produkcji w partiach
+            # Planowanie produkcji w partiach
             liczba_partii = (zapotrzebowanie_netto + self.wielkosc_partii.get(produkt, 1) - 1) // self.wielkosc_partii.get(produkt, 1)
             planowana_produkcja = liczba_partii * self.wielkosc_partii.get(produkt, 1)
             dzien_produkcji = max(0, dzien - self.czas_realizacji.get(produkt, 0))
@@ -31,16 +32,19 @@ class MRP:
             print(f"Planowana produkcja dla {produkt}: {planowana_produkcja} (Partie: {liczba_partii}, Wielkość partii: {self.wielkosc_partii.get(produkt, 1)})")
             print(f"Produkcja zaplanowana na dzień {dzien_produkcji}")
 
-            #Dodanie planu produkcji do harmonogramu
+            # Aktualizacja najdłuższego dnia
+            self.najdluzszy_dzien = max(self.najdluzszy_dzien, dzien_produkcji)
+
+            # Dodanie planu produkcji do harmonogramu
             nowy_wiersz = pd.DataFrame({'Dzień': [dzien_produkcji], 'Produkt': [produkt],
                                         'Zapotrzebowanie': [ilosc_wymagana], 'Planowana produkcja': [planowana_produkcja]})
             self.harmonogram = pd.concat([self.harmonogram, nowy_wiersz], ignore_index=True)
 
-            #Aktualizacja stanu magazynowego
+            # Aktualizacja stanu magazynowego
             self.stan_poczatkowy[produkt] = dostepny_stan + planowana_produkcja
             print(f"Zaktualizowany stan magazynu dla {produkt}: {self.stan_poczatkowy[produkt]}")
 
-            #Obliczanie zapotrzebowania na komponenty (BoM poziom 2)
+            # Obliczanie zapotrzebowania na komponenty (BoM poziom 2)
             if produkt in self.bom:
                 for komponent, ilosc_na_produkt in self.bom[produkt].items():
                     zapotrzebowanie_na_komponent = planowana_produkcja * ilosc_na_produkt
@@ -56,10 +60,9 @@ class MRP:
         for produkt, (dzien, ilosc) in zapotrzebowanie_produktow.items():
             self.oblicz_zapotrzebowanie(produkt, dzien, ilosc)
 
-        #Sortowanie według dnia produkcji
+        # Sortowanie według dnia produkcji
         self.harmonogram.sort_values(by='Dzień', inplace=True)
         return self.harmonogram
-
 
     def drukuj_koncowy_harmonogram(self):
         """
@@ -68,36 +71,47 @@ class MRP:
         print("\n--- Ostateczny harmonogram produkcji ---")
         print(self.harmonogram.to_string(index=False))
 
-#Definioweanie
-#produktów i komponentów dla fotela (BoM)
+    def drukuj_czas_realizacji(self):
+        """
+        Drukowanie najdłuższego dnia, na którym zamówienie zostanie zrealizowane.
+        """
+        print(f"\n--- Zamówienie zostanie zrealizowane do dnia {self.najdluzszy_dzien} ---")
+
+
+# Definicja produktów i komponentów dla fotela (BoM)
 produkty = ['Fotel', 'Rama', 'Nogi', 'Tkanina', 'Pianka']
 bom = {
     'Fotel': {'Rama': 1, 'Nogi': 4, 'Tkanina': 3, 'Pianka': 2},  # 1 rama, 4 nogi, 3 metry tkaniny i 2 jednostki pianki na 1 fotel
 }
 
-#Czas realizacji w dniach dla każdego komponentu i produktu
+# Czas realizacji w dniach dla każdego komponentu i produktu
 czas_realizacji = {'Fotel': 5, 'Rama': 3, 'Nogi': 2, 'Tkanina': 1, 'Pianka': 1}
 
-#Początkowy stan magazynowy dla produktów i komponentów
+# Początkowy stan magazynowy dla produktów i komponentów
 stan_poczatkowy = {'Fotel': 0, 'Rama': 10, 'Nogi': 40, 'Tkanina': 50, 'Pianka': 30}
 
-#Definiowanie zapasu bezpieczeństwa
+# Definicja poziomów zapasu bezpieczeństwa (minimalny poziom do utrzymania)
 zapas_bezpieczenstwa = {'Fotel': 0, 'Rama': 5, 'Nogi': 10, 'Tkanina': 10, 'Pianka': 5}
 
-#Definicja wielkości partii produkcji (np. 10 ram na partię)
+# Prośba o podanie wielkości partii produkcji przez użytkownika
+ilosc_foteli = int(input("Podaj ilość foteli do wyprodukowania: "))
+
+# Definicja wielkości partii produkcji (np. 10 ram na partię)
 wielkosc_partii = {'Fotel': 1, 'Rama': 10, 'Nogi': 20, 'Tkanina': 10, 'Pianka': 5}
 
-#Tworzenie instancji MRP
+# Tworzenie instancji MRP
 mrp = MRP(produkty, bom, czas_realizacji, stan_poczatkowy, zapas_bezpieczenstwa, wielkosc_partii)
 
-#Definicja zapotrzebowania na produkt (Dzień, Ilość)
+# Definicja zapotrzebowania na produkt (Dzień, Ilość)
 zapotrzebowanie_produktow = {
-    'Fotel': (10, 15)  # Potrzeba 15 foteli na dzień 10
+    'Fotel': (10, ilosc_foteli)  # Potrzeba foteli na dzień 10
 }
 
-#Planowanie MRP
+# Planowanie MRP
 harmonogram = mrp.plan_mrp(zapotrzebowanie_produktow)
 
-
-#Wyświetlanie finalnego harmonogramu w terminalu
+# Wyświetlanie finalnego harmonogramu w terminalu
 mrp.drukuj_koncowy_harmonogram()
+
+# Wyświetlanie najdłuższego dnia, kiedy zamówienie zostanie zrealizowane
+mrp.drukuj_czas_realizacji()
